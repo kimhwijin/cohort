@@ -68,6 +68,7 @@ def run_predicting(config, model, test_dataloader, device):
 
     metric_dict = defaultdict(float)
     all_y_prob = np.array([], dtype=np.float32)
+    all_y_true = np.array([], dtype=np.float32)
     metric_fn = MetricCollection([
         F1Score(task='binary', threshold=config.threshold if hasattr(config, 'threshold') else 0.5).to(device),
         Precision(task='binary', threshold=config.threshold if hasattr(config, 'threshold') else 0.5).to(device),
@@ -84,15 +85,17 @@ def run_predicting(config, model, test_dataloader, device):
 
         y_prob = model(image, numeric, categorical).view(-1).sigmoid()
         all_y_prob = np.concatenate([all_y_prob, y_prob.cpu().detach().numpy()])
+        all_y_true = np.concatenate([all_y_true, label.cpu().detach().numpy()])
+
         metric_scores = metric_fn(y_prob, label)
         for key, value in metric_scores.items():
             if 'Binary' in key:
                 key = key[6:]
             metric_dict[key] += value.item()
-
+    
     for key, value in metric_dict.items():
         metric_dict[key] = value / (step+1)
-    
+    metric_dict['ConfusionMatrix'] = ConfusionMatrix(task='binary', threshold=config.threshold if hasattr(config, 'threshold') else 0.5).to(device)(all_y_prob, all_y_true)
     torch.cuda.empty_cache()
     gc.collect()
     return metric_dict, all_y_prob
